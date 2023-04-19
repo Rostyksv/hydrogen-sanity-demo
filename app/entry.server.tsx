@@ -18,10 +18,10 @@ export default async function handleRequest(
      * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/nonce
      */
     nonce = generateNonce();
-    // responseHeaders.set(
-    //   'Content-Security-Policy',
-    //   `script-src 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline'; object-src 'none'; base-uri 'none';`,
-    // );
+    responseHeaders.set(
+      'Content-Security-Policy',
+      `script-src 'nonce-${nonce}' 'strict-dynamic' cdn.shopify.com; object-src 'none'; base-uri 'none';`,
+    );
   }
 
   const body = await renderToReadableStream(
