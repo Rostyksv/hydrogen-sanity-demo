@@ -7,16 +7,16 @@ import {ReactNode, useMemo} from 'react';
 import Tooltip from '~/components/elements/Tooltip';
 import CartIcon from '~/components/icons/Cart';
 import CreditCardIcon from '~/components/icons/CreditCard';
+import SpinnerIcon from '~/components/icons/Spinner';
 import {Link} from '~/components/Link';
 import {AddToCartLink} from '~/components/product/buttons/AddToCartButton';
 import BuyNowButton from '~/components/product/buttons/BuyNowButton';
 import ProductTooltip from '~/components/product/Tooltip';
-import type {SanityColorTheme} from '~/types/sanity';
+import {useColorTheme} from '~/lib/theme';
 import type {ProductWithNodes} from '~/types/shopify';
 
 type Props = {
   children?: ReactNode;
-  colorTheme?: SanityColorTheme;
   variantGid?: ProductVariant['id'];
   linkAction: 'addToCart' | 'buyNow' | 'link';
   quantity?: number;
@@ -25,7 +25,6 @@ type Props = {
 
 export default function ProductInlineLink({
   children,
-  colorTheme,
   variantGid,
   linkAction,
   quantity = 1,
@@ -33,7 +32,6 @@ export default function ProductInlineLink({
 }: Props) {
   return (
     <ProductInlineLinkContent
-      colorTheme={colorTheme}
       linkAction={linkAction}
       quantity={quantity}
       storefrontProduct={storefrontProduct}
@@ -46,12 +44,12 @@ export default function ProductInlineLink({
 
 function ProductInlineLinkContent({
   children,
-  colorTheme,
   linkAction,
   quantity = 1,
   storefrontProduct,
   variantGid,
 }: Props) {
+  const colorTheme = useColorTheme();
   const {handle, title} = storefrontProduct;
 
   const selectedVariant =
@@ -104,6 +102,23 @@ function ProductInlineLinkContent({
     [children, colorTheme?.background, linkAction],
   );
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const LoadingContent = useMemo(
+    () => (
+      <span
+        className={clsx(
+          'inline-flex place-content-center items-center rounded-xs bg-peach p-0.5 leading-none duration-200 ease-out',
+          'hover:opacity-80',
+        )}
+        style={{background: colorTheme?.background}}
+      >
+        {children}
+        <SpinnerIcon className="ml-[0.25em]" width={14} height={14} />
+      </span>
+    ),
+    [children, colorTheme?.background],
+  );
+
   return (
     <Tippy
       interactive={linkAction === 'link'}
@@ -142,6 +157,7 @@ function ProductInlineLinkContent({
               products: [productAnalytics],
               totalValue: parseFloat(productAnalytics.price),
             }}
+            loadingContent={LoadingContent}
           >
             {LinkContent}
           </AddToCartLink>

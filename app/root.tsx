@@ -29,9 +29,10 @@ import {
 import {GenericError} from '~/components/global/GenericError';
 import {Layout} from '~/components/global/Layout';
 import {NotFound} from '~/components/global/NotFound';
+import {PreviewLoading} from '~/components/global/PreviewLoading';
 import {useAnalytics} from '~/hooks/useAnalytics';
 import {useNonce} from '~/lib/nonce';
-import {Preview} from '~/lib/preview';
+import {isPreviewModeEnabled, Preview, PreviewData} from '~/lib/sanity';
 import {DEFAULT_LOCALE} from '~/lib/utils';
 import {LAYOUT_QUERY} from '~/queries/sanity/layout';
 import {CART_QUERY} from '~/queries/shopify/cart';
@@ -41,7 +42,9 @@ import type {I18nLocale} from '~/types/shopify';
 
 const seo: SeoHandleFunction<typeof loader> = ({data}) => ({
   title: data?.layout?.seo?.title,
-  titleTemplate: `%s · ${data?.layout?.seo?.title}`,
+  titleTemplate: `%s${
+    data?.layout?.seo?.title ? ` · ${data?.layout?.seo?.title}` : ''
+  }`,
   description: data?.layout?.seo?.description,
 });
 
@@ -78,23 +81,39 @@ export const links: LinksFunction = () => {
 };
 
 export async function loader({context}: LoaderArgs) {
+  const cache = context.storefront.CacheCustom({
+    mode: 'public',
+    maxAge: 60,
+    staleWhileRevalidate: 60,
+  });
+
+  const preview: PreviewData | undefined = isPreviewModeEnabled(
+    context.sanity.preview,
+  )
+    ? {
+        projectId: context.sanity.preview.projectId,
+        dataset: context.sanity.preview.dataset,
+        token: context.sanity.preview.token,
+      }
+    : undefined;
+
   const [cartId, shop, layout] = await Promise.all([
     context.session.get('cartId'),
     context.storefront.query<{shop: Shop}>(SHOP_QUERY),
-    context.sanity.client.fetch(LAYOUT_QUERY),
+    context.sanity.query<any>({query: LAYOUT_QUERY, cache}),
   ]);
 
   const selectedLocale = context.storefront.i18n as I18nLocale;
 
   return defer({
+    preview,
     analytics: {
       shopifySalesChannel: ShopifySalesChannel.hydrogen,
       shopId: shop.shop.id,
     },
     cart: cartId ? getCart(context, cartId) : undefined,
-    preview: context.sanity.preview,
     layout,
-    notFoundCollection: layout.notFoundPage?.collectionGid
+    notFoundCollection: layout?.notFoundPage?.collectionGid
       ? context.storefront.query<{collection: Collection}>(
           COLLECTION_QUERY_ID,
           {
@@ -130,7 +149,7 @@ export default function App() {
         <Links />
       </head>
       <body>
-        <Preview preview={preview}>
+        <Preview preview={preview} fallback={<PreviewLoading />}>
           <Layout key={`${locale.language}-${locale.country}`}>
             <Outlet />
           </Layout>
@@ -149,9 +168,14 @@ export function ErrorBoundary({error}: {error: Error}) {
   const routeError = useRouteError();
   const isRouteError = isRouteErrorResponse(routeError);
 
-  const {selectedLocale, layout, notFoundCollection} = root.data;
-  const {notFoundPage} = layout;
-  const locale = selectedLocale ?? DEFAULT_LOCALE;
+  const {
+    selectedLocale: locale,
+    layout,
+    notFoundCollection,
+  } = root.data
+    ? root.data
+    : {selectedLocale: DEFAULT_LOCALE, layout: null, notFoundCollection: {}};
+  const {notFoundPage} = layout || {};
 
   let title = 'Error';
   if (isRouteError) {

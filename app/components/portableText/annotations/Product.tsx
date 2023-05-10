@@ -1,12 +1,11 @@
 import type {PortableTextMarkComponentProps} from '@portabletext/react';
-import {useMatches} from '@remix-run/react';
 import type {Product} from '@shopify/hydrogen/storefront-api-types';
 
 import ProductInlineLink from '~/components/portableText/annotations/ProductInlineLink';
-import type {SanityColorTheme, SanityProductWithVariant} from '~/types/sanity';
+import type {SanityProductWithVariant} from '~/lib/sanity';
+import {useGid} from '~/lib/utils';
 
 type Props = PortableTextMarkComponentProps & {
-  colorTheme?: SanityColorTheme;
   value: PortableTextMarkComponentProps['value'] & {
     linkAction: 'addToCart' | 'buyNow' | 'link';
     productWithVariant: SanityProductWithVariant;
@@ -14,19 +13,12 @@ type Props = PortableTextMarkComponentProps & {
   };
 };
 
-const ProductAnnotation = ({children, colorTheme, value}: Props) => {
+const ProductAnnotation = ({children, value}: Props) => {
   const {productWithVariant} = value;
-
-  const storefrontData =
-    useMatches().find((match) => match.data?.storefrontData)?.data
-      ?.storefrontData || {};
 
   const productGid = productWithVariant.gid;
   const productVariantGid = productWithVariant.variantGid;
-
-  const storefrontProduct = storefrontData.products.find(
-    (product: Product) => product.id === productGid,
-  );
+  const storefrontProduct = useGid<Product>(productGid);
 
   if (!storefrontProduct) {
     return <>{children}</>;
@@ -34,7 +26,6 @@ const ProductAnnotation = ({children, colorTheme, value}: Props) => {
 
   return (
     <ProductInlineLink
-      colorTheme={colorTheme}
       linkAction={value.linkAction || 'link'}
       quantity={value.quantity}
       storefrontProduct={storefrontProduct}

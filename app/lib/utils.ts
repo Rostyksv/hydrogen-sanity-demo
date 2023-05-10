@@ -1,24 +1,30 @@
 import {useMatches} from '@remix-run/react';
+import {extractWithPath} from '@sanity/mutator';
 import type {
   Collection,
   Product,
   ProductOption,
+  ProductVariant,
 } from '@shopify/hydrogen/storefront-api-types';
 import type {AppLoadContext} from '@shopify/remix-oxygen';
 import {json, type LoaderArgs} from '@shopify/remix-oxygen';
-import {reduceDeep} from 'deepdash-es/standalone';
 import pluralize from 'pluralize-esm';
+import {useMemo} from 'react';
 
 import {countries} from '~/data/countries';
-import {PRODUCTS_AND_COLLECTIONS} from '~/queries/shopify/product';
-import type {SanityModule} from '~/types/sanity';
+import type {SanityModule} from '~/lib/sanity';
 import type {
   SanityCollectionPage,
   SanityHomePage,
   SanityPage,
   SanityProductPage,
-} from '~/types/sanity';
+} from '~/lib/sanity';
+import {PRODUCTS_AND_COLLECTIONS} from '~/queries/shopify/product';
 import type {I18nLocale} from '~/types/shopify';
+
+/** @see https://github.com/sanity-io/sanity/pull/4461 */
+const extract = (...args: Parameters<typeof extractWithPath>) =>
+  extractWithPath(...args).map(({value}) => value);
 
 export const DEFAULT_LOCALE: I18nLocale = Object.freeze({
   ...countries.default,
@@ -161,56 +167,88 @@ export const hasMultipleProductOptions = (options?: ProductOption[]) => {
 /**
  * Get the product options as a string, e.g. "Color / Size / Title"
  */
-
 export const getProductOptionString = (options?: ProductOption[]) => {
   return options
     ?.map(({name, values}) => pluralize(name, values.length, true))
     .join(' / ');
 };
 
-/**
- * Get data from Shopify for page components
- */
-
 type StorefrontPayload = {
   products: Product[];
   collections: Collection[];
 };
 
-export const getStorefrontData = async ({
+/**
+ * Get data from Shopify for page components
+ */
+export async function fetchGids({
   page,
   context,
 }: {
   page: SanityHomePage | SanityPage | SanityCollectionPage | SanityProductPage;
   context: AppLoadContext;
-}) => {
-  const [productGids, collectionGids] = reduceDeep(
-    page,
-    (acc, value) => {
-      if (value?._type == 'productWithVariant') {
-        acc[0].push(value.gid);
-      }
-      if (value?._type == 'collection') {
-        acc[1].push(value.gid);
-      }
-      return acc;
-    },
-    [[], []],
-  );
+}) {
+  const productGids = extract(`..[_type == "productWithVariant"].gid`, page);
+  const collectionGids = extract(`..[_type == "collection"].gid`, page);
 
-  const {products, collections}: StorefrontPayload =
-    await context.storefront.query(PRODUCTS_AND_COLLECTIONS, {
-      variables: {
-        ids: productGids,
-        collectionIds: collectionGids,
+  const {products, collections} =
+    await context.storefront.query<StorefrontPayload>(
+      PRODUCTS_AND_COLLECTIONS,
+      {
+        variables: {
+          ids: productGids,
+          collectionIds: collectionGids,
+        },
       },
-    });
+    );
 
-  return {
-    products,
-    collections,
-  };
-};
+  return extract(`..[id?]`, [...products, ...collections]) as (
+    | Product
+    | Collection
+    | ProductVariant
+  )[];
+}
+
+// TODO: better typing?
+export function useGid<
+  T extends Product | Collection | ProductVariant | ProductVariant['image'],
+>(gid?: string | null): T | null | undefined {
+  const gids = useGids();
+
+  if (!gid) {
+    return null;
+  }
+
+  return gids.get(gid) as T;
+}
+
+export function useGids() {
+  const matches = useMatches();
+
+  // TODO: this doesnt' seem to actually memoize...
+  return useMemo(() => {
+    const gids = new Map<
+      string,
+      Product | Collection | ProductVariant | ProductVariant['image']
+    >();
+
+    for (const match of matches) {
+      if (!match.data?.gids?.length) {
+        continue;
+      }
+
+      for (const gid of match.data.gids) {
+        if (gids.has(gid.id)) {
+          continue;
+        }
+
+        gids.set(gid.id, gid);
+      }
+    }
+
+    return gids;
+  }, [matches]);
+}
 
 /**
  * A not found response. Sets the status code.
@@ -226,3 +264,23 @@ export const notFound = (message = 'Not Found') =>
  */
 export const badRequest = <T>(data: T) =>
   json(data, {status: 400, statusText: 'Bad Request'});
+
+/**
+ * Validates that a url is local
+ * @param url
+ * @returns `true` if local `false`if external domain
+ */
+export function isLocalPath(url: string) {
+  try {
+    // We don't want to redirect cross domain,
+    // doing so could create fishing vulnerability
+    // If `new URL()` succeeds, it's a fully qualified
+    // url which is cross domain. If it fails, it's just
+    // a path, which will be the current domain.
+    new URL(url);
+  } catch (e) {
+    return true;
+  }
+
+  return false;
+}

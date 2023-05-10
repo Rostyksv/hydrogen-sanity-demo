@@ -8,10 +8,11 @@ import ProductGrid from '~/components/collection/ProductGrid';
 import SortOrder from '~/components/collection/SortOrder';
 import {SORT_OPTIONS} from '~/components/collection/SortOrder';
 import CollectionHero from '~/components/heroes/Collection';
-import {getStorefrontData, notFound, validateLocale} from '~/lib/utils';
+import {SanityCollectionPage} from '~/lib/sanity';
+import {ColorTheme} from '~/lib/theme';
+import {fetchGids, notFound, validateLocale} from '~/lib/utils';
 import {COLLECTION_PAGE_QUERY} from '~/queries/sanity/collection';
 import {COLLECTION_QUERY} from '~/queries/shopify/collection';
-import {SanityCollectionPage} from '~/types/sanity';
 
 const seo: SeoHandleFunction<typeof loader> = ({data}) => ({
   title: data?.page?.seo?.title ?? data?.collection?.title,
@@ -47,9 +48,19 @@ export async function loader({params, context, request}: LoaderArgs) {
 
   invariant(params.handle, 'Missing collection handle');
 
+  const cache = context.storefront.CacheCustom({
+    mode: 'public',
+    maxAge: 60,
+    staleWhileRevalidate: 60,
+  });
+
   const [page, {collection}] = await Promise.all([
-    context.sanity.client.fetch<SanityCollectionPage>(COLLECTION_PAGE_QUERY, {
-      slug: params.handle,
+    context.sanity.query<SanityCollectionPage>({
+      query: COLLECTION_PAGE_QUERY,
+      params: {
+        slug: params.handle,
+      },
+      cache,
     }),
     context.storefront.query<{collection: any}>(COLLECTION_QUERY, {
       variables: {
@@ -68,12 +79,12 @@ export async function loader({params, context, request}: LoaderArgs) {
   }
 
   // Resolve any references to products on the Storefront API
-  const storefrontData = await getStorefrontData({page, context});
+  const gids = await fetchGids({page, context});
 
   return json({
     page,
     collection,
-    storefrontData,
+    gids,
     sortKey,
     analytics: {
       pageType: AnalyticsPageType.collection,
@@ -91,13 +102,9 @@ export default function Collection() {
   const products = collection.products.nodes;
 
   return (
-    <>
+    <ColorTheme value={page.colorTheme}>
       {/* Hero */}
-      <CollectionHero
-        colorTheme={page.colorTheme}
-        fallbackTitle={page.title}
-        hero={page.hero}
-      />
+      <CollectionHero fallbackTitle={page.title} hero={page.hero} />
 
       <div
         className={clsx(
@@ -124,14 +131,13 @@ export default function Collection() {
         )}
 
         <ProductGrid
-          colorTheme={page.colorTheme}
           collection={collection}
           modules={page.modules}
           url={`/collections/${collection.handle}`}
           key={`${collection.handle}-${sort}`}
         />
       </div>
-    </>
+    </ColorTheme>
   );
 }
 

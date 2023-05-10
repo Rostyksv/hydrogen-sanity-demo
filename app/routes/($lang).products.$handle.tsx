@@ -22,13 +22,14 @@ import invariant from 'tiny-invariant';
 import PortableText from '~/components/portableText/PortableText';
 import ProductDetails from '~/components/product/Details';
 import RelatedProducts from '~/components/product/RelatedProducts';
-import {getStorefrontData, notFound, validateLocale} from '~/lib/utils';
+import {SanityProductPage} from '~/lib/sanity';
+import {ColorTheme} from '~/lib/theme';
+import {fetchGids, notFound, validateLocale} from '~/lib/utils';
 import {PRODUCT_PAGE_QUERY} from '~/queries/sanity/product';
 import {
   PRODUCT_QUERY,
   RECOMMENDED_PRODUCTS_QUERY,
 } from '~/queries/shopify/product';
-import {SanityProductPage} from '~/types/sanity';
 
 const seo: SeoHandleFunction = ({data}) => {
   const media = flattenConnection<MediaConnection>(data.product?.media).find(
@@ -72,9 +73,19 @@ export async function loader({params, context, request}: LoaderArgs) {
     selectedOptions.push({name, value});
   });
 
+  const cache = context.storefront.CacheCustom({
+    mode: 'public',
+    maxAge: 60,
+    staleWhileRevalidate: 60,
+  });
+
   const [page, {product}] = await Promise.all([
-    context.sanity.client.fetch<SanityProductPage>(PRODUCT_PAGE_QUERY, {
-      slug: params.handle,
+    context.sanity.query<SanityProductPage>({
+      query: PRODUCT_PAGE_QUERY,
+      params: {
+        slug: params.handle,
+      },
+      cache,
     }),
     context.storefront.query<{
       product: Product & {selectedVariant?: ProductVariant};
@@ -91,7 +102,7 @@ export async function loader({params, context, request}: LoaderArgs) {
   }
 
   // Resolve any references to products on the Storefront API
-  const storefrontData = await getStorefrontData({page, context});
+  const gids = await fetchGids({page, context});
 
   // Get recommended products from Shopify
   const recommended = context.storefront.query<{
@@ -117,7 +128,7 @@ export async function loader({params, context, request}: LoaderArgs) {
   return defer({
     page,
     product,
-    storefrontData,
+    gids,
     selectedVariant,
     recommended,
     analytics: {
@@ -134,7 +145,7 @@ export default function ProductHandle() {
     useLoaderData();
 
   return (
-    <>
+    <ColorTheme value={page.colorTheme}>
       <div className="relative w-full">
         <ProductDetails
           selectedVariant={selectedVariant}
@@ -157,7 +168,6 @@ export default function ProductHandle() {
                 'max-w-[660px] px-4 pb-24 pt-8', //
                 'md:px-8',
               )}
-              colorTheme={page?.colorTheme}
             />
           )}
         </div>
@@ -171,11 +181,10 @@ export default function ProductHandle() {
           {(products) => (
             <RelatedProducts
               relatedProducts={products.productRecommendations}
-              colorTheme={page?.colorTheme}
             />
           )}
         </Await>
       </Suspense>
-    </>
+    </ColorTheme>
   );
 }

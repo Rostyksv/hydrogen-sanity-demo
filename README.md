@@ -2,6 +2,8 @@
 
 This demo is compatible with `@shopify/hydrogen >= 2023.1.0` built on Remix.
 
+> For the legacy Hydrogen v1 template, please refer to the [hydrogen-v1 branch](https://github.com/sanity-io/hydrogen-sanity-demo/tree/hydrogen-v1).
+
 <img src="https://user-images.githubusercontent.com/209129/173065853-77b26be2-dd15-4b4d-8164-850e70247b88.png" width="1000" />
 
 [Demo][hydrogen-sanity-demo] | [Sanity Studio][sanity-shopify-studio] | [Sanity Connect for Shopify][sanity-connect]
@@ -22,13 +24,40 @@ This TypeScript demo adopts many of Hydrogen's [framework conventions and third-
 
 # Fetching Sanity data
 
-This demo comes with a Sanity client which operates in a very similar way to the Hydrogen Storefront client. This provides client is available in the Remix context which enables you to fetch content from Sanity in Remix loaders and actions.
+This demo comes preconfigured with a Sanity client that is available in the Remix context, enabling you to fetch content from Sanity in Remix loaders and actions.
+
+In addition to this, we've created a `query` utility, which uses [Hydrogen's caching strategies](https://shopify.dev/docs/custom-storefronts/hydrogen/data-fetching/cache#caching-strategies) to reduce the number of calls to Sanity's API. If no straregy is provided to the `cache` option, then the Hydrogen `CacheLong()` strategy will be used by default.
+
+It's possible to make calls to the Sanity API either with `query`:
+
+```tsx
+import {json, type LoaderArgs} from '@shopify/remix-oxygen';
+import type {SanityProductPage} from '~/lib/sanity';
+
+const QUERY = `*[_type == 'product' && slug.current == $slug]`;
+
+export async function loader({params, context}: LoaderArgs) {
+  const cache = context.storefront.CacheLong();
+
+  const sanityContent = await context.sanity.query<SanityProductPage>({
+    query: QUERY,
+    params: {
+      slug: params.handle,
+    },
+    cache,
+  });
+
+  return json({sanityContent});
+}
+```
+
+or directly with the Sanity client:
 
 ```tsx
 // <root>/app/routes/($lang).products.$handle.tsx
 import {useLoaderData} from '@remix-run/react';
 import {json, type LoaderArgs} from '@shopify/remix-oxygen';
-import type {SanityProductPage} from '~/types/sanity';
+import type {SanityProductPage} from '~/lib/sanity';
 
 const QUERY = `*[_type == 'product' && slug.current == $slug]`;
 
@@ -49,7 +78,7 @@ export default function Product() {
 }
 ```
 
-This uses our official [`@sanity/client`][sanity-js-client] library, so supports all the methods you would expect of the Sanity Client.
+This uses our official [`@sanity/client`][sanity-js-client] library, so it supports all the methods you would expect to interact with Sanity API's
 
 You can also use the [`defer` and `Await` utilities](https://remix.run/docs/en/1.15.0/guides/streaming#using-defer) from Remix to prioritize critical data:
 
@@ -58,27 +87,27 @@ You can also use the [`defer` and `Await` utilities](https://remix.run/docs/en/1
 import {Suspense} from 'react';
 import {Await, useLoaderData} from '@remix-run/react';
 import {defer, type LoaderArgs} from '@shopify/remix-oxygen';
-import type {SanityProductPage, LessImportant} from '~/types/sanity';
+import type {SanityProductPage, LessImportant} from '~/lib/sanity';
 
 const QUERY = `*[_type == 'product' && slug.current == $slug]`;
 const ANOTHER_QUERY = `*[references($id)]`;
 
 export async function loader({params, context}: LoaderArgs) {
   /* Await the important content here */
-  const sanityContent = await context.sanity.client.fetch<SanityProductPage>(
-    QUERY,
-    {
+  const sanityContent = await context.sanity.query<SanityProductPage>({
+    query: QUERY,
+    params: {
       slug: params.handle,
     },
-  );
+  });
 
   /* This can wait - so don't await it - keep it as a promise */
-  const moreSanityContent = context.sanity.client.fetch<LessImportant>(
-    ANOTHER_QUERY,
-    {
+  const moreSanityContent = context.sanity.query<LessImportant>({
+    query: ANOTHER_QUERY,
+    params: {
       id: sanityContent._id,
     },
-  );
+  });
 
   return defer({sanityContent});
 }
@@ -96,6 +125,56 @@ export default function Product() {
       </Suspense>
     </div>
   );
+}
+```
+
+Utilize Sanity's realtime content platform to give editors live-as-you-type previewing of their content. That way they can see, in context, how their changes will appear directly in the storefront.
+
+Learn more about `@sanity/preview-kit` in the [documentation](preview-kit)
+
+```tsx
+// <root>/app/routes/($lang)._index.tsx
+export async function loader({context, params}: LoaderArgs) {
+  // Fetch initial snapshot to render, in preview mode this will include a token in the request
+  const page = await context.sanity.client.fetch<SanityHomePage>(QUERY);
+
+  // ...rest of loader
+
+  return json({
+    page,
+    // ...other loader data
+  });
+}
+
+export default function Index() {
+  const {page} = useLoaderData<typeof loader>();
+  // In preview mode, use preview component
+  const Component = usePreviewComponent<{page: SanityHomePage}>(Route, Preview);
+
+  return <Component page={page} />;
+}
+
+function Route({page}: {page: SanityHomePage}) {
+  return (
+    <>
+      {/* Page hero */}
+      {page?.hero && <HomeHero hero={page.hero as SanityHeroHome} />}
+
+      {page?.modules && (
+        <div className={clsx('mb-32 mt-24 px-4', 'md:px-8')}>
+          <ModuleGrid items={page.modules} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function Preview(props: {page: SanityHomePage}) {
+  const {usePreview} = usePreviewContext()!;
+  // Query, resolving drafts, and listen for new changes
+  const page = usePreview(HOME_PAGE_QUERY, undefined, props.page);
+
+  return <Route page={page} />;
 }
 ```
 
@@ -196,3 +275,4 @@ This repository is published under the [MIT][license] license.
 [sanity-js-client]: https://www.sanity.io/docs/js-client
 [sanity-shopify-studio]: https://github.com/sanity-io/sanity-shopify-studio
 [shopify-analytics]: https://shopify.dev/docs/custom-storefronts/hydrogen/analytics
+[preview-kit]: https://github.com/sanity-io/preview-kit

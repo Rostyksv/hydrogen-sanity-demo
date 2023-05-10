@@ -4,7 +4,13 @@ import {
   type Session,
   type SessionStorage,
 } from '@shopify/remix-oxygen';
-import {createContext, type ReactNode, useContext} from 'react';
+import {
+  createContext,
+  ElementType,
+  type ReactNode,
+  useContext,
+  useMemo,
+} from 'react';
 
 export class PreviewSession {
   constructor(
@@ -32,17 +38,17 @@ export class PreviewSession {
     return this.session.has(key);
   }
 
-  get(key: string) {
-    return this.session.get(key);
-  }
+  // get(key: string) {
+  //   return this.session.get(key);
+  // }
 
   destroy() {
     return this.sessionStorage.destroySession(this.session);
   }
 
-  unset(key: string) {
-    this.session.unset(key);
-  }
+  // unset(key: string) {
+  //   this.session.unset(key);
+  // }
 
   set(key: string, value: any) {
     this.session.set(key, value);
@@ -64,7 +70,7 @@ export const usePreviewContext = () => useContext(PreviewContext);
 export function Preview(props: PreviewProps) {
   const {children, preview} = props;
 
-  if (!preview) {
+  if (!preview?.token) {
     return <>{children}</>;
   }
 
@@ -102,7 +108,7 @@ type UsePreview = <
   serverSnapshot?: R,
 ) => R;
 
-type PreviewData = {
+export type PreviewData = {
   projectId: string;
   dataset: string;
   token: string;
@@ -116,8 +122,23 @@ type PreviewContext = {
   usePreview: UsePreview;
 };
 
-type PreviewProps = {
+export type PreviewProps = {
   children: ReactNode;
   fallback?: ReactNode;
   preview?: PreviewData;
 };
+
+/**
+ * Select and memoize which component to render based on preview mode
+ */
+export function usePreviewComponent<T>(
+  component: ElementType<T>,
+  preview: ElementType<T>,
+) {
+  const isPreview = Boolean(usePreviewContext());
+
+  return useMemo(
+    () => (isPreview ? preview : component),
+    [component, isPreview, preview],
+  );
+}
