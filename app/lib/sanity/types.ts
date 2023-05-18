@@ -94,6 +94,7 @@ export type SanityHomePage = {
   hero?: SanityHeroHome;
   modules: (SanityModuleImage | SanityModuleInstagram)[];
   seo: SanitySeo;
+  about: SanityAboutHome;
 };
 
 export type SanityImageWithProductHotspots = {
@@ -296,4 +297,8 @@ export type SanitySeo = {
   description?: string;
   image?: SanityAssetImage;
   title: string;
+};
+
+export type SanityAboutHome = {
+  description?: string;
 };

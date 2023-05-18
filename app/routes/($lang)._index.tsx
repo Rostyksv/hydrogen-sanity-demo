@@ -9,6 +9,7 @@ import {usePreviewComponent, usePreviewContext} from '~/lib/sanity';
 import {SanityHeroHome, SanityHomePage} from '~/lib/sanity';
 import {fetchGids, notFound, validateLocale} from '~/lib/utils';
 import {HOME_PAGE_QUERY} from '~/queries/sanity/home';
+import HomeAbout from "~/components/heroes/About";
 
 const seo: SeoHandleFunction = ({data}) => ({
   title: data?.page?.seo?.title || 'Sanity x Hydrogen',
@@ -59,6 +60,7 @@ export default function Index() {
 }
 
 function Route({page}: {page: SanityHomePage}) {
+
   return (
     <>
       {/* Page hero */}
@@ -69,6 +71,7 @@ function Route({page}: {page: SanityHomePage}) {
           <ModuleGrid items={page.modules} />
         </div>
       )}
+      {page?.about && <HomeAbout about={page.about} />}
     </>
   );
 }
