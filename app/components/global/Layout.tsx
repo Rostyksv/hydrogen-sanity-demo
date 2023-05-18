@@ -24,7 +24,7 @@ export function Layout({backgroundColor, children}: LayoutProps) {
       >
         <Header />
 
-        <main className="relative grow" id="mainContent" role="main">
+        <main className="absolute bottom-2 w-full" id="mainContent" role="main">
           <div className="mx-auto pb-overlap">{children}</div>
         </main>
       </div>
